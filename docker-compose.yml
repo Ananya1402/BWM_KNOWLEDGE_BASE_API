@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bwm-rag-api
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/rag_kb
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      - EMBED_MODEL=${EMBED_MODEL:-text-embedding-3-small}
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - rag-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: rag-postgres-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rag_kb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  rag-network:
+    driver: bridge

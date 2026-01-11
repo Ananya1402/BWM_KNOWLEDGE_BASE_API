@@ -1,0 +1,70 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+.env.local
+
+# Virtual environments
+venv/
+env/
+
+# Node modules (if any)
+node_modules/
+
+# Build files
+*.pyc
+.pytest_cache/
+.coverage
+
+# Alembic
+alembic/versions/__pycache__/
+
+# Chroma and data (dynamically created at runtime)
+chroma_db/
+chroma/
+uploads/
+
+# Logs
+logfile
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
