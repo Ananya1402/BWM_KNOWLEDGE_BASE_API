@@ -47,5 +47,19 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Command to run the application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Create entrypoint script for migrations and app startup
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Waiting for PostgreSQL..."\n\
+while ! pg_isready -h db -U postgres -d rag_kb 2>/dev/null; do\n\
+  sleep 1\n\
+done\n\
+echo "PostgreSQL is ready!"\n\
+echo "Running database migrations..."\n\
+alembic upgrade head\n\
+echo "Migrations completed!"\n\
+echo "Starting application..."\n\
+exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
+' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

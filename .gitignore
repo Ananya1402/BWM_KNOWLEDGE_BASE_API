@@ -1,5 +1,6 @@
 # .gitignore
 chroma/
+chroma_db/
 uploads/
 
 # Byte-compiled / optimized / DLL files
