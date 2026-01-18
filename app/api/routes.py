@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends, Form, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -14,7 +14,13 @@ from app.schemas.schemas import (
     ChatMessageSchema,
     SessionSummary,
     CreateSessionResponse,
-    ActiveSessionResponse
+    ActiveSessionResponse,
+    CollectionResponse,
+    DocumentResponse,
+    DeleteDocumentResponse,
+    DeleteCollectionResponse,
+    CollectionsListResponse,
+    DocumentsListResponse
 )
 
 from app.services.ingest import ingest_pdf_file
@@ -31,6 +37,7 @@ from app.services.chat_memory import (
 )
 
 from app.db.database import get_db
+from app.db.models import ChatSession, Collection, Document, Chunk, Embedding
 
 import logging
 import shutil
@@ -45,10 +52,15 @@ logger = logging.getLogger("app.api")
 def ingest_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    collection: str = "default"
+    collection: str = Query("default")
 ):
     """
-    Upload a PDF and ingest it into Chroma. Ingestion runs in background.
+    Upload a PDF and ingest it into pgvector database.
+    Documents are shared across all sessions - no session_id required.
+    
+    Parameters:
+    - file: PDF file to upload (form-data)
+    - collection: Collection name (query parameter, default: "default")
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -272,6 +284,161 @@ def delete_session(session_id: UUID, db: Session = Depends(get_db)):
 @router.get("/status/{job_id}")
 def get_status(job_id: str):
     return {"job_id": job_id, "status": job_status.get_status(job_id)}
+
+
+# ===== DOCUMENT & COLLECTION MANAGEMENT ENDPOINTS =====
+
+@router.get("/collections", response_model=CollectionsListResponse)
+def list_collections(db: Session = Depends(get_db)):
+    """
+    List all collections with their document counts.
+    """
+    collections = db.query(Collection).all()
+    
+    result = []
+    for coll in collections:
+        doc_count = db.query(Document).filter(Document.collection_id == coll.id).count()
+        result.append(CollectionResponse(
+            id=coll.id,
+            name=coll.name,
+            description=coll.description,
+            created_at=coll.created_at,
+            document_count=doc_count
+        ))
+    
+    return CollectionsListResponse(
+        total_collections=len(result),
+        collections=result
+    )
+
+
+@router.get("/collections/{collection_name}/documents", response_model=DocumentsListResponse)
+def get_documents_by_collection(collection_name: str, db: Session = Depends(get_db)):
+    """
+    Get all documents in a specific collection.
+    """
+    collection = db.query(Collection).filter(Collection.name == collection_name).first()
+    
+    if not collection:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+    
+    documents = db.query(Document).filter(Document.collection_id == collection.id).all()
+    
+    result = []
+    for doc in documents:
+        chunk_count = db.query(Chunk).filter(Chunk.document_id == doc.id).count()
+        result.append(DocumentResponse(
+            id=doc.id,
+            collection_name=collection.name,
+            filename=doc.filename,
+            document_type=doc.document_type,
+            title=doc.title,
+            created_at=doc.created_at,
+            chunk_count=chunk_count
+        ))
+    
+    return DocumentsListResponse(
+        collection_name=collection_name,
+        total_documents=len(result),
+        documents=result
+    )
+
+
+@router.get("/documents/{document_id}", response_model=DocumentResponse)
+def get_document_by_id(document_id: UUID, db: Session = Depends(get_db)):
+    """
+    Get a specific document by its ID, including collection info.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    
+    chunk_count = db.query(Chunk).filter(Chunk.document_id == document.id).count()
+    
+    return DocumentResponse(
+        id=document.id,
+        collection_name=document.collection.name,
+        filename=document.filename,
+        document_type=document.document_type,
+        title=document.title,
+        created_at=document.created_at,
+        chunk_count=chunk_count
+    )
+
+
+@router.delete("/documents/{document_id}", response_model=DeleteDocumentResponse)
+def delete_document_by_id(document_id: UUID, db: Session = Depends(get_db)):
+    """
+    Delete a document by its ID.
+    This will CASCADE delete all associated chunks and embeddings.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    
+    # Count what will be deleted
+    chunk_count = db.query(Chunk).filter(Chunk.document_id == document.id).count()
+    embedding_count = db.query(Embedding).filter(Embedding.document_id == document.id).count()
+    
+    filename = document.filename
+    collection_name = document.collection.name
+    
+    # Delete document (CASCADE will handle chunks and embeddings)
+    db.delete(document)
+    db.commit()
+    
+    logger.info(f"Deleted document {document_id} ({filename}) with {chunk_count} chunks and {embedding_count} embeddings")
+    
+    return DeleteDocumentResponse(
+        document_id=document_id,
+        filename=filename,
+        collection_name=collection_name,
+        chunks_deleted=chunk_count,
+        embeddings_deleted=embedding_count,
+        message=f"Successfully deleted document '{filename}' and all associated data"
+    )
+
+
+@router.delete("/collections/{collection_name}/documents", response_model=DeleteCollectionResponse)
+def delete_all_documents_in_collection(collection_name: str, db: Session = Depends(get_db)):
+    """
+    Delete all documents in a specific collection.
+    This will CASCADE delete all associated chunks and embeddings.
+    The collection itself is also deleted.
+    """
+    collection = db.query(Collection).filter(Collection.name == collection_name).first()
+    
+    if not collection:
+        raise HTTPException(status_code=404, detail=f"Collection '{collection_name}' not found")
+    
+    # Count what will be deleted
+    documents = db.query(Document).filter(Document.collection_id == collection.id).all()
+    doc_count = len(documents)
+    
+    total_chunks = 0
+    total_embeddings = 0
+    for doc in documents:
+        total_chunks += db.query(Chunk).filter(Chunk.document_id == doc.id).count()
+        total_embeddings += db.query(Embedding).filter(Embedding.document_id == doc.id).count()
+    
+    # Delete collection (CASCADE will handle documents, chunks, and embeddings)
+    db.delete(collection)
+    db.commit()
+    
+    logger.info(
+        f"Deleted collection '{collection_name}' with {doc_count} documents, "
+        f"{total_chunks} chunks, and {total_embeddings} embeddings"
+    )
+    
+    return DeleteCollectionResponse(
+        collection_name=collection_name,
+        documents_deleted=doc_count,
+        chunks_deleted=total_chunks,
+        embeddings_deleted=total_embeddings,
+        message=f"Successfully deleted collection '{collection_name}' and all {doc_count} documents with associated data"
+    )
 
 
 # python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

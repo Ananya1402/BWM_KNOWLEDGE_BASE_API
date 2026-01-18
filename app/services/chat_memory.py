@@ -75,25 +75,44 @@ def save_conversation_turn(db: Session, session_id: UUID, user_query: str, assis
 
 def delete_session_history(db: Session, session_id: UUID) -> int:
     """
-    Delete all chat history and the session record.
-    Returns number of deleted messages.
+    Delete session and ALL related data via CASCADE:
+    - Documents uploaded in this session
+    - Chunks from those documents
+    - Embeddings from those chunks
+    - Chat messages in this session
+    
+    Returns number of deleted messages (for backward compatibility).
     """
     try:
+        # Count messages before deletion (for return value)
         deleted_count = (
             db.query(ChatMessage)
             .filter(ChatMessage.session_id == session_id)
-            .delete()
+            .count()
         )
-
-        db.query(ChatSession).filter(
+        
+        # Delete the session - CASCADE will handle:
+        # 1. chat_messages (via ChatSession.messages relationship)
+        # 2. documents (via session_id foreign key)
+        # 3. chunks (via document_id foreign key from documents)
+        # 4. embeddings (via chunk_id, document_id, session_id foreign keys)
+        deleted = db.query(ChatSession).filter(
             ChatSession.session_id == session_id
         ).delete()
-
+        
         db.commit()
-        logger.info(f"Deleted {deleted_count} messages and session {session_id}")
+        
+        if deleted:
+            logger.info(
+                f"Deleted session {session_id} with {deleted_count} messages "
+                f"and all associated documents, chunks, and embeddings (CASCADE)"
+            )
+        else:
+            logger.warning(f"Session {session_id} not found for deletion")
+        
         return deleted_count
     except Exception as e:
-        logger.error(f"Failed to delete session history: {e}")
+        logger.error(f"Failed to delete session and related data: {e}", exc_info=True)
         db.rollback()
         return 0
 

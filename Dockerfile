@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     git \
+    postgresql-server-dev-all \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

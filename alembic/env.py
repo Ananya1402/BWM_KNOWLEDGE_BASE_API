@@ -1,6 +1,8 @@
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy import event
+import sqlalchemy as sa
 from alembic import context
 
 # Import your models' Base and config
@@ -8,7 +10,7 @@ from app.db.database import Base
 from app.core.config import DATABASE_URL
 
 # Import all models here so Alembic can detect them
-from app.db.models import ChatSession, ChatMessage
+from app.db.models import ChatSession, ChatMessage, Document, Chunk, Embedding
 
 # this is the Alembic Config object
 config = context.config
@@ -63,6 +65,9 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Ensure pgvector extension is created (requires superuser)
+        # If already exists, this will be a no-op
+
         context.configure(
             connection=connection, 
             target_metadata=target_metadata

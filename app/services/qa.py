@@ -4,7 +4,7 @@ from typing import List, Tuple, Optional, Dict
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.core import config
-from app.services.chroma_client import chroma_client, get_embedding, get_openai_client
+from app.services.pg_vector_client import get_embedding, get_openai_client, similarity_search
 from app.services.chat_memory import (
     get_chat_history,
     save_conversation_turn,
@@ -30,18 +30,20 @@ def answer_query(
     session_id: Optional[UUID] = None,
     db: Optional[Session] = None
 ) -> Tuple[str, List[str]]:
+    """
+    Answer query using pgvector similarity search.
+    """
     try:
-        col = chroma_client.get_collection(name=collection)
-
+        # ===== PGVECTOR QUERY =====
         query_embedding = get_embedding(query)
-
-        results = col.query(query_embeddings=[query_embedding], n_results=k)
-
-        docs = results["documents"][0] if results["documents"] else []
-        sources = [
-            m.get("source", "Unknown")
-            for m in results["metadatas"][0]
-        ] if results["metadatas"] else []
+        
+        # Perform similarity search using pgvector (searches ALL documents)
+        docs, sources = similarity_search(
+            db=db,
+            query_embedding=query_embedding,
+            k=k
+        )
+        # ===== END PGVECTOR =====
 
         context = "\n\n".join(docs)
 

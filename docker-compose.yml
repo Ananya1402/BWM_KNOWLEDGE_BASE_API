@@ -26,7 +26,8 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:16-alpine
+    # Using pgvector-enabled PostgreSQL image
+    image: pgvector/pgvector:pg16
     container_name: rag-postgres-db
     environment:
       - POSTGRES_USER=postgres
@@ -34,6 +35,7 @@ services:
       - POSTGRES_DB=rag_kb
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init_pgvector.sql:/docker-entrypoint-initdb.d/init_pgvector.sql
     ports:
       - "5432:5432"
     networks:

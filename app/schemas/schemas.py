@@ -79,3 +79,55 @@ class ActiveSessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Document and Collection Schemas
+class CollectionResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    document_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentResponse(BaseModel):
+    id: UUID
+    collection_name: str
+    filename: str
+    document_type: str
+    title: Optional[str] = None
+    created_at: datetime
+    chunk_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class DeleteDocumentResponse(BaseModel):
+    document_id: UUID
+    filename: str
+    collection_name: str
+    chunks_deleted: int
+    embeddings_deleted: int
+    message: str
+
+
+class DeleteCollectionResponse(BaseModel):
+    collection_name: str
+    documents_deleted: int
+    chunks_deleted: int
+    embeddings_deleted: int
+    message: str
+
+
+class CollectionsListResponse(BaseModel):
+    total_collections: int
+    collections: List[CollectionResponse]
+
+
+class DocumentsListResponse(BaseModel):
+    collection_name: str
+    total_documents: int
+    documents: List[DocumentResponse]
