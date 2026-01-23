@@ -12,10 +12,21 @@ class Settings:
     # gemini_api_key: str = os.getenv("GEMINI_API_KEY", "test")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    
+    # Database configuration with AWS RDS support
     database_url: str = os.getenv(
         "DATABASE_URL",
         "postgresql://postgres:postgres@localhost:5432/rag_kb"
     )
+    
+    # AWS-specific settings
+    aws_region: str = os.getenv("AWS_REGION", "us-east-1")
+    aws_s3_bucket: str = os.getenv("AWS_S3_BUCKET", "")
+    use_s3_storage: bool = os.getenv("USE_S3_STORAGE", "false").lower() == "true"
+    
+    # Environment detection
+    is_production: bool = os.getenv("ENVIRONMENT", "development") == "production"
+    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
 
 
 settings = Settings()

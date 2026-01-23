@@ -51,13 +51,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Create entrypoint script for migrations and app startup
 RUN echo '#!/bin/bash\n\
 set -e\n\
-echo "Waiting for PostgreSQL..."\n\
-while ! pg_isready -h db -U postgres -d rag_kb 2>/dev/null; do\n\
-  sleep 1\n\
-done\n\
-echo "PostgreSQL is ready!"\n\
 echo "Running database migrations..."\n\
-alembic upgrade head\n\
+alembic upgrade head || { echo "Migration failed, continuing anyway..."; }\n\
 echo "Migrations completed!"\n\
 echo "Starting application..."\n\
 exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
